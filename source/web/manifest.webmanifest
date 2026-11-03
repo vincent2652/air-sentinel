@@ -1,0 +1,20 @@
+{
+  "name": "空气哨兵 · 实时空气质量",
+  "short_name": "空气哨兵",
+  "description": "iPhone 常亮实时空气质量监控台，自动刷新，无需下拉。数据来自国控站实时发布平台。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08090b",
+  "theme_color": "#08090b",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["health", "weather", "utilities", "lifestyle"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>空气哨兵 · 实时空气质量</title>
+<meta name="description" content="iPhone 常亮实时空气质量看板，自动刷新，无需下拉。">
+<meta name="theme-color" content="#08090b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="空气哨兵">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- iOS 常亮保活：无声循环视频，不可见、不占位 -->
+<video id="wake-video" playsinline webkit-playsinline muted loop preload="auto" aria-hidden="true" tabindex="-1"></video>
+
+<div id="glow" aria-hidden="true"></div>
+
+<!-- 首屏启动层：iOS 的常亮/视频保活与定位授权都需要一次用户手势 -->
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="boot-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="46" height="46">
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.28"></circle>
+        <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                stroke-dasharray="34 98" transform="rotate(-90 24 24)"></circle>
+        <text x="24" y="29" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor"
+              font-family="-apple-system, sans-serif">AQ</text>
+      </svg>
+    </div>
+    <h1 class="boot-title">空气哨兵</h1>
+    <p class="boot-sub">常亮 · 自动刷新 · 国控站实时数据</p>
+    <button id="boot-btn" class="boot-btn" type="button">点按启动监控台</button>
+    <p class="boot-note">
+      启动后会请求一次定位权限，并保持屏幕常亮。<br>
+      想装成 App：Safari 分享 → 添加到主屏幕。
+    </p>
+  </div>
+</div>
+
+<div id="app">
+
+  <header id="topbar">
+    <div class="loc-block">
+      <div id="loc-name" class="loc-name">定位中…</div>
+      <div id="loc-sub" class="loc-sub">正在获取你的位置</div>
+    </div>
+    <div class="live-block">
+      <div class="ring-wrap" title="距下次自动刷新">
+        <svg class="ring" viewBox="0 0 40 40" aria-hidden="true">
+          <circle class="ring-bg" cx="20" cy="20" r="16"></circle>
+          <circle class="ring-fg" id="ring-fg" cx="20" cy="20" r="16"></circle>
+        </svg>
+        <span id="ring-dot" class="ring-dot"></span>
+      </div>
+      <div class="live-text">
+        <span id="live-label" class="live-label">自动刷新</span>
+        <span id="live-count" class="live-count">--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main id="main">
+
+    <section class="hero" id="hero">
+      <div class="hero-top">
+        <span class="hero-kicker" id="std-label">中国标准 AQI</span>
+      </div>
+      <div class="aqi-row">
+        <div class="aqi-num" id="aqi-num">--</div>
+        <div class="aqi-side">
+          <div class="aqi-level" id="aqi-level">加载中</div>
+          <div class="aqi-alt" id="aqi-alt"></div>
+          <div class="aqi-primary" id="aqi-primary"></div>
+        </div>
+      </div>
+      <div class="aqi-scale" id="aqi-scale" aria-hidden="true">
+        <span data-lv="0"></span><span data-lv="1"></span><span data-lv="2"></span>
+        <span data-lv="3"></span><span data-lv="4"></span><span data-lv="5"></span>
+      </div>
+      <p class="aqi-advice" id="aqi-advice">正在连接数据源…</p>
+      <div class="aqi-stamp" id="aqi-stamp"></div>
+    </section>
+
+    <section class="grid6" id="grid6"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>过去 24 小时</h2>
+        <span class="panel-note" id="note-24">AQI 逐小时</span>
+      </div>
+      <div class="chart-box">
+        <canvas id="chart24"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="fc-title">未来 7 天</h2>
+        <span class="panel-note">PM2.5 / PM10 / O₃ 日均区间</span>
+      </div>
+      <div id="trend7" class="trend7"></div>
+      <div class="seg seg-mini" id="seg-fc">
+        <button type="button" data-v="pm25" class="on">PM2.5</button>
+        <button type="button" data-v="pm10">PM10</button>
+        <button type="button" data-v="o3">臭氧</button>
+      </div>
+      <p class="panel-foot" id="fc-foot">这是逐日区间预报（min / avg / max），不是国控站实测值。国控站只发布已发生的实测数据，本身不提供预报。</p>
+    </section>
+
+    <section class="panel" id="wx-panel" hidden>
+      <div class="panel-head">
+        <h2>现场气象</h2>
+        <span class="panel-note">辅助判读</span>
+      </div>
+      <div id="wx-grid" class="wx-grid"></div>
+      <p class="panel-foot" id="wx-foot">现场气象与空气质量同一路国控站发布数据，用于解释污染的扩散与累积条件。</p>
+    </section>
+
+    <footer id="foot">
+      <div id="src-line">数据来源：—</div>
+      <div id="meta-line">—</div>
+    </footer>
+
+  </main>
+
+</div>
+
+<!-- 悬浮按钮必须位于 #app 之外：#app 带防烧屏 transform，会成为 fixed 的定位祖先 -->
+<button id="gear" class="gear" type="button" aria-label="设置">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <path fill="currentColor" d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5Zm0 5.2A1.7 1.7 0 1 1 12 10.3a1.7 1.7 0 0 1 0 3.4Z"/>
+    <path fill="currentColor" d="M19.4 13.0a1.2 1.2 0 0 0 .7-1.1v-1.8a1.2 1.2 0 0 0-.7-1.1l-1.3-.5a6.4 6.4 0 0 0-.5-1.2l.5-1.3a1.2 1.2 0 0 0-.2-1.3l-1.3-1.3a1.2 1.2 0 0 0-1.3-.2l-1.3.5a6.4 6.4 0 0 0-1.2-.5L12 2.6a1.2 1.2 0 0 0-1.1-.7H9.1a1.2 1.2 0 0 0-1.1.7l-.5 1.3a6.4 6.4 0 0 0-1.2.5l-1.3-.5a1.2 1.2 0 0 0-1.3.2L2.4 5.4a1.2 1.2 0 0 0-.2 1.3l.5 1.3a6.4 6.4 0 0 0-.5 1.2l-1.3.5a1.2 1.2 0 0 0-.7 1.1v1.8a1.2 1.2 0 0 0 .7 1.1l1.3.5a6.4 6.4 0 0 0 .5 1.2l-.5 1.3a1.2 1.2 0 0 0 .2 1.3l1.3 1.3a1.2 1.2 0 0 0 1.3.2l1.3-.5a6.4 6.4 0 0 0 1.2.5l.5 1.3a1.2 1.2 0 0 0 1.1.7h1.8a1.2 1.2 0 0 0 1.1-.7l.5-1.3a6.4 6.4 0 0 0 1.2-.5l1.3.5a1.2 1.2 0 0 0 1.3-.2l1.3-1.3a1.2 1.2 0 0 0 .2-1.3l-.5-1.3a6.4 6.4 0 0 0 .5-1.2l1.3-.5ZM12 16.9A4.9 4.9 0 1 1 12 7.1a4.9 4.9 0 0 1 0 9.8Z"/>
+  </svg>
+</button>
+
+<button id="refresh-btn" class="refresh-btn" type="button" aria-label="立即刷新">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <path fill="currentColor" d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/>
+  </svg>
+</button>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-label="设置">
+    <div class="sheet-grip"></div>
+    <h2 class="sheet-title">显示与刷新</h2>
+
+    <div class="field">
+      <div class="field-label">自动刷新间隔</div>
+      <div class="seg" id="seg-interval">
+        <button type="button" data-v="60">1 分钟</button>
+        <button type="button" data-v="300">5 分钟</button>
+        <button type="button" data-v="600">10 分钟</button>
+        <button type="button" data-v="1800">30 分钟</button>
+      </div>
+      <p class="field-hint">国控站实测值本身约每小时更新一次，刷新更快只是更早拿到新数据。</p>
+    </div>
+
+    <div class="field">
+      <div class="field-label">评价标准</div>
+      <div class="seg" id="seg-std">
+        <button type="button" data-v="cn">中国 HJ 633-2012</button>
+        <button type="button" data-v="us">美国 US EPA</button>
+      </div>
+      <p class="field-hint">同一份浓度数据，两套标准的分级限值不同，美标通常更严。</p>
+    </div>
+
+    <div class="field">
+      <div class="field-label">屏幕常亮</div>
+      <div class="row-switch">
+        <div class="row-text">
+          <div class="row-title">保持屏幕不熄灭</div>
+          <div class="row-sub" id="wake-status">未启用</div>
+        </div>
+        <button type="button" id="sw-wake" class="switch" role="switch" aria-checked="false" aria-label="保持屏幕不熄灭"><span></span></button>
+      </div>
+      <p class="field-hint">iPhone 网页无法调用系统常亮接口，这里用一段无声循环视频保活。会略微增加发热和耗电。</p>
+    </div>
+
+    <div class="field">
+      <div class="field-label">防烧屏微位移</div>
+      <div class="row-switch">
+        <div class="row-text">
+          <div class="row-title">每分钟轻微移动画面</div>
+          <div class="row-sub">OLED 屏长时间显示静止内容会留残影</div>
+        </div>
+        <button type="button" id="sw-shift" class="switch" role="switch" aria-checked="true" aria-label="防烧屏微位移"><span></span></button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">现场气象</div>
+      <div class="row-switch">
+        <div class="row-text">
+          <div class="row-title">显示温湿度与风力</div>
+          <div class="row-sub">帮助判断污染扩散条件</div>
+        </div>
+        <button type="button" id="sw-wx" class="switch" role="switch" aria-checked="true" aria-label="显示现场气象"><span></span></button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">免密钥备用源</div>
+      <div class="row-switch">
+        <div class="row-text">
+          <div class="row-title">官方不可用时用模式数据兜底</div>
+          <div class="row-sub">关闭后，未配置官方 token 时页面不显示任何数字</div>
+        </div>
+        <button type="button" id="sw-fallback" class="switch" role="switch" aria-checked="true" aria-label="免密钥备用源"><span></span></button>
+      </div>
+      <p class="field-hint">备用源是 Open-Meteo 的卫星+模式推算值，显示时会明确标注；官方国控站数据接通后自动优先使用官方。</p>
+    </div>
+
+    <div class="field">
+      <div class="field-label">位置</div>
+      <div class="loc-actions">
+        <button type="button" id="btn-relocate" class="btn">重新定位</button>
+        <button type="button" id="btn-manual" class="btn btn-ghost">手动指定城市</button>
+      </div>
+      <div id="manual-box" class="manual-box" hidden>
+        <input id="manual-input" type="text" inputmode="search" autocomplete="off" placeholder="输入城市或区县名，如：杭州西湖区">
+        <button type="button" id="btn-manual-go" class="btn">确定</button>
+      </div>
+      <p class="field-hint" id="loc-hint">定位失败时会自动回退到上次成功的位置。</p>
+    </div>
+
+    <div class="field">
+      <div class="field-label">运行状态</div>
+      <div class="diag" id="diag"></div>
+    </div>
+
+    <button type="button" class="btn btn-wide" data-close>完成</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

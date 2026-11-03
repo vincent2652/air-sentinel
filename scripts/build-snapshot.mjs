@@ -201,6 +201,17 @@ async function buildFromWaqi(token) {
 
 async function main() {
   const t0 = Date.now();
+  // Actions 兜底保护：若仓库里已有 90 分钟内的 cnemc 原始快照（由能直连官方源的机器推送），不覆盖
+  if (process.env.SKIP_IF_FRESH) {
+    try {
+      const prev = JSON.parse(readFileSync(join(OUT, "cities.json"), "utf8"));
+      const ageMin = (Date.now() - Date.parse(prev.generatedAt)) / 60000;
+      if (prev.mode === "cnemc" && ageMin < 90) {
+        console.log(`skip: fresh cnemc snapshot ${ageMin.toFixed(0)} min old`);
+        return;
+      }
+    } catch { /* 无历史快照则继续 */ }
+  }
   let result = null;
   try {
     result = await buildFromCnemc();
