@@ -481,6 +481,69 @@ body {
 }
 .wx-u { font-size: 10px; color: var(--text-3); font-weight: 400; margin-left: 1px; }
 
+/* ---------- 数据获取路径可视化 ---------- */
+.pipe-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px; }
+
+.pipe-node {
+  background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--aqi) 42%, transparent);
+  border-radius: 10px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pipe-node b { font-size: 11.5px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.pipe-node i { font-style: normal; font-size: 9.5px; color: var(--text-3); }
+.pipe-node.pipe-dim { border-color: var(--line); }
+
+.pipe-arrow {
+  display: flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--aqi) 72%, var(--text-3));
+  font-size: 13px;
+  padding: 0 1px;
+}
+
+.pipe-others,
+.pipe-path { margin-top: 12px; }
+
+.pipe-path:first-child { margin-top: 0; }
+
+.pipe-path.off { opacity: 0.42; filter: saturate(0.25); }
+.pipe-path.off .pipe-node { border-color: var(--line); }
+.pipe-path.off .pipe-arrow { color: var(--text-3); }
+
+.pipe-path-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 6px; flex-wrap: wrap; }
+.pipe-path-head b { font-size: 12px; font-weight: 600; color: var(--text); }
+.pipe-path-head .pipe-reason { font-style: normal; font-size: 10px; color: var(--text-3); }
+
+.pipe-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.pipe-badge.on {
+  background: color-mix(in srgb, var(--aqi) 22%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--aqi) 55%, transparent);
+  color: var(--aqi);
+}
+
+.pipe-path-foot { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.5; }
+
+.pipe-other { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; color: var(--text-3); }
+.pipe-other-t { color: var(--text-2); font-weight: 500; flex-shrink: 0; }
+.pipe-other-r { text-align: right; }
+
 /* ---------- 页脚 ---------- */
 #foot {
   margin-top: 18px;
@@ -890,6 +953,15 @@ body {
       <div id="meta-line">—</div>
     </footer>
 
+    <section class="panel" id="pipe-panel">
+      <div class="panel-head">
+        <h2>数据获取路径</h2>
+        <span class="panel-note" id="pipe-note"></span>
+      </div>
+      <div id="pipe-paths" aria-label="全部数据链路与当前生效链路"></div>
+      <p class="panel-foot" id="pipe-foot"></p>
+    </section>
+
   </main>
 
 </div>
@@ -1002,7 +1074,7 @@ body {
   </div>
 </div>
 
-<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T08:04:37.146Z";</script>
+<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T08:27:12.724Z";</script>
 <script>
 /* 空气哨兵 AirSentinel — iPhone 常亮实时空气质量监控台
  *
@@ -1554,8 +1626,10 @@ body {
     return {
       ok: true,
       requested_std: S.settings.std,
+      mode: snap.mode,
       source: {
         kind: 'snapshot',
+        mode: snap.mode,
         official: snap.mode === 'cnemc',
         label: snap.mode === 'cnemc'
           ? `中国环境监测总站官方实测（快照 ${snap.generatedAt ? snap.generatedAt.slice(11, 16) : ''} 更新）`
@@ -1835,6 +1909,7 @@ body {
     renderForecast();
     renderWeather();
     renderFooter();
+    renderPipeline();
     renderDiag();
   }
 
@@ -2199,6 +2274,77 @@ body {
         <div class="wx-k">${c.k}</div>
         <div class="wx-v">${fmtNum(c.v, c.d)}<span class="wx-u">${c.v === null || c.v === undefined ? '' : c.u}</span></div>
       </div>`).join('');
+  }
+
+  // ---------- 数据获取路径可视化（页面最下方） ----------
+
+  const PIPE_PATHS = [
+    {
+      id: 'cnemc-direct',
+      title: '官方直连',
+      nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['本部署的服务端代理', '代取·绕开CORS'], ['本页', '每5分钟轮询']],
+      foot: '浓度与国标 AQI 均为官方原值，零换算。',
+      off: '本部署为纯静态托管，没有服务端代理',
+    },
+    {
+      id: 'snap-cnemc',
+      title: '官方快照',
+      nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['快照生产者（能直连官方的机器）', '每小时抓取'], ['GitHub Pages 静态快照', '同源读取'], ['本页', '每5分钟轮询']],
+      foot: '快照含官方原始浓度、24h 均值与 O3-8h，国标为官方原值，零换算。',
+      off: '当前快照不是由能直连官方的机器生产',
+    },
+    {
+      id: 'snap-waqi',
+      title: '转发快照（云端兜底）',
+      nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['WAQI 官方转发', '慢约1小时'], ['反算浓度→换算国标', '约1-2点误差'], ['GitHub Pages 静态快照', '同源读取'], ['本页', '每5分钟轮询']],
+      foot: 'GitHub 云端出口到不了 cnemc，只能经 WAQI 转发；国标为换算值，页面已明确标注。',
+      off: '快照已是官方原始值，无需兜底',
+    },
+    {
+      id: 'om-direct',
+      title: '模式兜底',
+      nodes: [['CAMS 卫星+模式', '推算'], ['Open-Meteo', '免Key·CORS开放'], ['本页直连', '每5分钟轮询']],
+      foot: '卫星+模式推算值，非国控站实测；任一官方通道恢复即自动切回。',
+      off: '官方通道可用，未启用',
+    },
+  ];
+
+  function activePipeId() {
+    const src = S.data && S.data.source;
+    if (!src) return null;
+    if (src.kind === 'cnemc') return 'cnemc-direct';
+    if (src.kind === 'snapshot') return src.mode === 'cnemc' ? 'snap-cnemc' : 'snap-waqi';
+    if (src.kind === 'openmeteo') return 'om-direct';
+    return null;
+  }
+
+  function renderPipeline() {
+    const wrap = $('pipe-paths');
+    const note = $('pipe-note');
+    const foot = $('pipe-foot');
+    if (!wrap) return;
+    const activeId = activePipeId();
+    const active = PIPE_PATHS.find((p) => p.id === activeId);
+
+    // 四条链路全部画出：生效的高亮加徽章，其余灰显并注明未启用原因
+    wrap.innerHTML = PIPE_PATHS.map((p) => {
+      const on = p.id === activeId;
+      const chain = p.nodes.map(([name, tag], i) => {
+        const node = `<div class="pipe-node"><b>${name}</b><i>${tag}</i></div>`;
+        return i === 0 ? node : `<div class="pipe-arrow" aria-hidden="true">→</div>${node}`;
+      }).join('');
+      const head = on
+        ? `<span class="pipe-badge on">当前生效</span><b>${p.title}</b>`
+        : `<span class="pipe-badge">未启用</span><b>${p.title}</b><i class="pipe-reason">${p.off}</i>`;
+      const footLine = on ? `<div class="pipe-path-foot">${p.foot}</div>` : '';
+      return `<div class="pipe-path${on ? ' on' : ' off'}"><div class="pipe-path-head">${head}</div><div class="pipe-row">${chain}</div>${footLine}</div>`;
+    }).join('');
+
+    if (note) note.textContent = active ? `当前生效：${active.title}` : '待取数';
+    if (foot) {
+      const t = S.data && S.data.fetched_at ? new Date(S.data.fetched_at).toLocaleTimeString('zh-CN') : '';
+      foot.textContent = (active ? active.foot : '取到数据后，这里会标出实际走过的链路。') + (t ? ` 本页最近一次取数：${t}。` : '');
+    }
   }
 
   // ---------- 页脚 ----------
