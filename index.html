@@ -993,7 +993,7 @@ body {
   </div>
 </div>
 
-<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T06:56:49.405Z";</script>
+<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T07:02:41.322Z";</script>
 <script>
 /* 空气哨兵 AirSentinel — iPhone 常亮实时空气质量监控台
  *
@@ -1522,7 +1522,13 @@ body {
     return {
       ok: true,
       requested_std: S.settings.std,
-      source: { kind: 'snapshot', official: true, label: `中国环境监测总站官方实测（GitHub 快照 ${snap.generatedAt ? snap.generatedAt.slice(11, 16) + ' 更新' : ''}）` },
+      source: {
+        kind: 'snapshot',
+        official: snap.mode === 'cnemc',
+        label: snap.mode === 'cnemc'
+          ? `中国环境监测总站官方实测（快照 ${snap.generatedAt ? snap.generatedAt.slice(11, 16) : ''} 更新）`
+          : `国控站官方转发（WAQI）快照 ${snap.generatedAt ? snap.generatedAt.slice(11, 16) : ''} 更新 · 国标为换算值`,
+      },
       station: {
         name: `${city.name}${st.PositionName ? ' · ' + st.PositionName : ''}`,
         location: st.PositionName || null,
@@ -1541,7 +1547,9 @@ body {
       history24h,
       advice: st.Measure || null,
       fetched_at: new Date().toISOString(),
-      derivation: '国标 AQI/等级/首要污染物为官方原值（每小时快照）；美标视图由官方浓度按 US EPA 断点表正向计算。',
+      derivation: snap.mode === 'cnemc'
+        ? '国标 AQI/等级/首要污染物为官方原值；美标视图由官方浓度按 US EPA 断点表正向计算。'
+        : '快照由 WAQI 转发的美标分项指数反算浓度后按 HJ 633-2012 换算国标；美标视图同浓度正向计算。',
     };
   }
 
@@ -1755,7 +1763,11 @@ body {
     }
     const src = S.data && S.data.source;
     if (src && src.official === false) {
-      setBanner('warn', '<span><b>备用源</b>：当前显示的是模式推算值，不是国控站实测，数值可能与官方读数有偏差。官方数据接通后会自动切换。</span>');
+      if (src.kind === 'snapshot') {
+        setBanner('warn', '<span><b>换算值提示</b>：本快照源自国控站官方转发（WAQI），国标 AQI 由浓度换算得出，与官方发布值可能有 1-2 点差异。</span>');
+      } else {
+        setBanner('warn', '<span><b>备用源</b>：当前显示的是模式推算值，不是国控站实测，数值可能与官方读数有偏差。官方数据接通后会自动切换。</span>');
+      }
       return;
     }
     const b = $('banner');
