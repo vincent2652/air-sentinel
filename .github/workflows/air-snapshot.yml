@@ -1,0 +1,37 @@
+name: air-snapshot
+
+on:
+  schedule:
+    - cron: "5 * * * *" # 每小时第 5 分钟抓一次官方数据（官方约每小时更新）
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: fetch official snapshot
+        run: node scripts/build-snapshot.mjs
+
+      - name: publish orphan pages branch (no history bloat)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          STAGE=$(mktemp -d)
+          cp index.html version.json "$STAGE"/
+          cp -r data "$STAGE"/data
+          git checkout --orphan pages
+          git rm -rfq . >/dev/null 2>&1 || true
+          cp "$STAGE"/index.html "$STAGE"/version.json .
+          cp -r "$STAGE"/data ./data
+          git add -A
+          git commit -qm "pages snapshot $(date -u +%FT%TZ)"
+          git push -f origin pages
