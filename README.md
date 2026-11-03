@@ -32,6 +32,7 @@ iPhone 网页 ──每5分钟轮询──> 同源 data/cities.json + data/city/
 | Open-Meteo 模式兜底 | `air-quality-api.open-meteo.com`（免 Key、CORS 开放） | 浓度 | 标注"模式推算值" |
 
 - 美标视图一律由浓度按 US EPA 断点表**正向**计算；国标在 cnemc 路径下取官方原值。
+- 子项完整度：cnemc 路径含 1h 浓度 + 24h 均值 + O₃-8h + 官方健康建议 + 逐小时历史（界面六宫格第二行显示 24h/8h）；WAQI 路径只有美标分指数，缺的子项行自动隐藏；Open-Meteo 含 1h 浓度但无 24h/O₃-8h。
 - 交叉验算：cnemc 与 WAQI 同城市同小时读数同量级、首要污染物一致；某天气网接口字段自相矛盾，已弃用。
 - 官方源约每小时更新一次；5 分钟轮询只为尽快拿到新小时数据。
 

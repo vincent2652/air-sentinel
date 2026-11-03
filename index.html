@@ -362,6 +362,15 @@ body {
 
 .pcell-unit { font-size: 10px; color: var(--text-3); margin-top: 2px; font-weight: 400; }
 
+.pcell-sub {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  min-height: 12px;
+  opacity: 0.9;
+}
+
 .pcell-bar {
   margin-top: 8px;
   height: 3px;
@@ -993,7 +1002,7 @@ body {
   </div>
 </div>
 
-<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T07:02:41.322Z";</script>
+<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T08:04:37.146Z";</script>
 <script>
 /* 空气哨兵 AirSentinel — iPhone 常亮实时空气质量监控台
  *
@@ -1313,6 +1322,22 @@ body {
     };
   }
 
+  /** 把官方完整子项（24h 均值、O3-8h）挂到两套视图上，显示用国标单位（CO 为 mg/m³）。
+   *  这些字段只有 cnemc 官方接口给；WAQI 与 Open-Meteo 没有，缺省时界面自动不显示该行。 */
+  function attachSubItems(views, conc24UG, o38h) {
+    D_KEYS.forEach((k) => {
+      const raw24 = conc24UG && conc24UG[k] !== undefined && conc24UG[k] !== null ? conc24UG[k] : null;
+      const disp24 = raw24 === null ? null : Number((k === 'co' ? raw24 / 1000 : raw24).toFixed(k === 'co' ? 2 : 0));
+      const disp8h = k === 'o3' && o38h !== null && o38h !== undefined ? Number(o38h.toFixed(0)) : null;
+      [views.cn, views.us].forEach((vw) => {
+        if (!vw.pollutants[k]) return;
+        vw.pollutants[k].conc24 = disp24;
+        vw.pollutants[k].unit24 = k === 'co' ? 'mg/m³' : 'μg/m³';
+        if (k === 'o3') vw.pollutants[k].o3_8h = disp8h;
+      });
+    });
+  }
+
   async function dFetchJSON(url) {
     const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) throw new Error(`direct_http_${r.status}`);
@@ -1381,6 +1406,12 @@ body {
       no2: numF(st.NO2), so2: numF(st.SO2), co: coMg === null ? null : coMg * 1000,
     };
     const views = dViewsFromConc(concUG);
+    // 官方完整子项：24h 均值 + O3-8h（WAQI/Open-Meteo 均无）
+    const co24 = numF(st.CO_24h);
+    attachSubItems(views, {
+      pm25: numF(st.PM2_5_24h), pm10: numF(st.PM10_24h), o3: numF(st.O3_24h),
+      no2: numF(st.NO2_24h), so2: numF(st.SO2_24h), co: co24 === null ? null : co24 * 1000,
+    }, numF(st.O3_8h));
     const officialAqi = numF(st.AQI);
     const CN_NAMES = ['优', '良', '轻度污染', '中度污染', '重度污染', '严重污染'];
     if (officialAqi !== null) {
@@ -1499,6 +1530,7 @@ body {
     const numF = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
     const concUG = st.conc || {};
     const views = dViewsFromConc(concUG);
+    attachSubItems(views, st.conc24 || null, st.o3_8h !== undefined && st.o3_8h !== null ? numF(st.o3_8h) : null);
     const officialAqi = numF(st.AQI);
     const CN_NAMES = ['优', '良', '轻度污染', '中度污染', '重度污染', '严重污染'];
     if (officialAqi !== null) {
@@ -1873,6 +1905,7 @@ body {
           <div class="pcell-label"><span>${p.label}</span><span class="pcell-iaqi"></span></div>
           <div class="pcell-val">—</div>
           <div class="pcell-unit"></div>
+          <div class="pcell-sub"></div>
           <div class="pcell-bar"><i></i></div>
         </div>`).join('');
     }
@@ -1885,6 +1918,7 @@ body {
       const unitEl = cell.querySelector('.pcell-unit');
       const iaqiEl = cell.querySelector('.pcell-iaqi');
       const barEl = cell.querySelector('.pcell-bar i');
+      const subEl = cell.querySelector('.pcell-sub');
 
       if (!item || item.index === null || item.index === undefined) {
         cell.classList.remove('hot');
@@ -1893,6 +1927,7 @@ body {
         valEl.classList.add('na');
         unitEl.textContent = '';
         iaqiEl.textContent = '';
+        if (subEl) subEl.textContent = '';
         barEl.style.width = '0%';
         return;
       }
@@ -1904,6 +1939,12 @@ body {
       cell.classList.toggle('hot', Boolean(item.is_primary));
       valEl.textContent = fmtNum(item.conc, p.digits);
       unitEl.textContent = `${item.unit || ''} · 分指数 ${item.index}`;
+      if (subEl) {
+        const bits = [];
+        if (p.key === 'o3' && item.o3_8h !== null && item.o3_8h !== undefined) bits.push(`8h ${item.o3_8h}`);
+        if (item.conc24 !== null && item.conc24 !== undefined) bits.push(`24h ${item.conc24}`);
+        subEl.textContent = bits.length ? `${bits.join(' · ')} ${item.unit24 || ''}` : '';
+      }
       iaqiEl.textContent = item.is_primary ? '首要' : '';
       iaqiEl.style.color = item.is_primary ? color : '';
       barEl.style.width = `${clamp((item.index / maxIdx) * 100, 2, 100)}%`;

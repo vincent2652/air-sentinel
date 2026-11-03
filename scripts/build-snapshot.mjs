@@ -133,6 +133,8 @@ async function buildFromCnemc() {
       }
     }
     const conc = (o) => { const cm = num(o.CO); return { pm25: num(o.PM2_5), pm10: num(o.PM10), o3: num(o.O3), no2: num(o.NO2), so2: num(o.SO2), co: cm === null ? null : cm * 1000 }; };
+    // 官方完整子项：24h 均值（CO 官方为 mg/m³，统一转 μg/m³）与 O3-8h
+    const conc24 = (o) => { const cm = num(o.CO_24h); return { pm25: num(o.PM2_5_24h), pm10: num(o.PM10_24h), o3: num(o.O3_24h), no2: num(o.NO2_24h), so2: num(o.SO2_24h), co: cm === null ? null : cm * 1000 }; };
     cities.push({ code, name: c.Area, lat: cl, lon: co, aqi: num(c.AQI), quality: c.Quality, primary: mapPP(c.PrimaryPollutant), time: c.TimePoint });
     details.set(code, {
       generatedAt: new Date().toISOString(), mode: "cnemc",
@@ -142,6 +144,7 @@ async function buildFromCnemc() {
         lat: num(st.Latitude), lon: num(st.Longitude), AQI: num(st.AQI), Quality: st.Quality,
         PrimaryPollutant: st.PrimaryPollutant, primary: mapPP(st.PrimaryPollutant),
         Measure: st.Measure || null, TimePoint: st.TimePoint, conc: conc(st),
+        conc24: conc24(st), o3_8h: num(st.O3_8h),
       } : null,
       history: Array.isArray(hist) ? hist.map((r) => {
         const m = /\/Date\((\d+)\)\//.exec(String(r.TimePoint || ""));
