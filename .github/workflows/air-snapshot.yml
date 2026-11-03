@@ -19,6 +19,8 @@ jobs:
           node-version: "20"
 
       - name: fetch official snapshot
+        env:
+          WAQI_TOKEN: ${{ secrets.WAQI_TOKEN }}
         run: node scripts/build-snapshot.mjs
 
       - name: publish orphan pages branch (no history bloat)
