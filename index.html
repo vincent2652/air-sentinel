@@ -186,6 +186,8 @@ body {
   align-items: flex-start;
 }
 
+.banner[hidden] { display: none; }
+
 .banner::before {
   content: "";
   flex-shrink: 0;
@@ -318,11 +320,19 @@ body {
 }
 
 /* ---------- 六项污染物 ---------- */
+.grid-cap {
+  margin-top: 20px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3);
+  letter-spacing: .02em;
+}
+
 .grid6 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 8px;
 }
 
 .pcell {
@@ -539,6 +549,16 @@ body {
 }
 
 .pipe-path-foot { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.5; }
+
+.pipe-ttl {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 6px;
+  line-height: 1.55;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.pipe-path.off .pipe-ttl { color: var(--text-3); }
 
 .pipe-other { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; color: var(--text-3); }
 .pipe-other-t { color: var(--text-2); font-weight: 500; flex-shrink: 0; }
@@ -895,7 +915,7 @@ body {
 
     <section class="hero" id="hero">
       <div class="hero-top">
-        <span class="hero-kicker" id="std-label">中国标准 AQI</span>
+        <span class="hero-kicker" id="std-label">US AQI · EPA</span>
       </div>
       <div class="aqi-row">
         <div class="aqi-num" id="aqi-num">--</div>
@@ -913,6 +933,7 @@ body {
       <div class="aqi-stamp" id="aqi-stamp"></div>
     </section>
 
+    <div class="grid-cap" id="grid-cap">分项污染物与 24 小时曲线 · 中国 HJ 633-2012</div>
     <section class="grid6" id="grid6"></section>
 
     <section class="panel">
@@ -998,12 +1019,12 @@ body {
     </div>
 
     <div class="field">
-      <div class="field-label">评价标准</div>
+      <div class="field-label">分项口径（污染物网格与 24 小时曲线）</div>
       <div class="seg" id="seg-std">
         <button type="button" data-v="cn">中国 HJ 633-2012</button>
         <button type="button" data-v="us">美国 US EPA</button>
       </div>
-      <p class="field-hint">同一份浓度数据，两套标准的分级限值不同，美标通常更严。</p>
+      <p class="field-hint">上方大数字固定用美标 US EPA，本项只影响下方分项与曲线；国标值同时在大数字下方一行给出。同一份浓度数据，两套标准的分级限值不同，美标通常更严。</p>
     </div>
 
     <div class="field">
@@ -1074,7 +1095,7 @@ body {
   </div>
 </div>
 
-<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T08:27:12.724Z";</script>
+<script>window.__AIRSENTINEL_DIRECT__=true;window.__BUILD__="2026-11-03T08:45:27.819Z";</script>
 <script>
 /* 空气哨兵 AirSentinel — iPhone 常亮实时空气质量监控台
  *
@@ -1647,6 +1668,7 @@ body {
       primary_label: PRIMARY_LABEL_D[primary] || primary.toUpperCase(),
       observed_at: st.TimePoint || null,
       observed_tz: '+08:00',
+      snapshot_at: snap.generatedAt || null,
       views,
       weather: { temperature_c: null, humidity_pct: null, wind_ms: null, pressure_hpa: null },
       forecast: {},
@@ -1896,15 +1918,19 @@ body {
   function renderAll() {
     const d = S.data;
     if (!d) return;
-    const view = d.views[S.settings.std] || d.views.us;
-    const other = S.settings.std === 'cn' ? d.views.us : d.views.cn;
+    // 上方大数字固定使用美标 US EPA（用户要求，不随设置变化）；
+    // 设置里的「分项口径」只影响下方污染物网格与 24 小时曲线。
+    const view = d.views.us || d.views.cn;
+    const other = d.views.cn && d.views.cn !== view ? d.views.cn : null;
+    const gridView = d.views[S.settings.std] || view;
     const aqi = view.aqi;
     const lvIdx = view.level_index >= 0 ? view.level_index : levelIndexOf(aqi);
 
     setTheme(lvIdx);
     renderHeader();
     renderHero(view, other, aqi, lvIdx);
-    renderPollutants(view, aqi);
+    renderPollutants(gridView, gridView.aqi);
+    renderGridCaption(gridView);
     renderChart();
     renderForecast();
     renderWeather();
@@ -1942,8 +1968,11 @@ body {
     $('aqi-level').textContent = view.aqi === null ? '无数据' : view.level;
 
     const altBits = [];
+    const official = Boolean(d.source && d.source.official);
     if (other && other.aqi !== null && other.aqi !== undefined) {
-      altBits.push(other.std === 'cn' ? `国标换算 <b>${other.aqi}</b> ${other.level}` : `美标原值 <b>${other.aqi}</b> ${other.level_alt || other.level}`);
+      altBits.push(other.std === 'cn'
+        ? `${official ? '国标同刻' : '国标换算'} <b>${other.aqi}</b> ${other.level}`
+        : `美标原值 <b>${other.aqi}</b> ${other.level_alt || other.level}`);
     }
     if (isCN && view.level_alt) altBits.push(`<span title="国标值由美标分项指数换算得到">${view.level_alt}</span>`);
     $('aqi-alt').innerHTML = altBits.join(' · ');
@@ -2024,6 +2053,14 @@ body {
       iaqiEl.style.color = item.is_primary ? color : '';
       barEl.style.width = `${clamp((item.index / maxIdx) * 100, 2, 100)}%`;
     });
+  }
+
+  /** 分项区上方的口径说明：大数字固定美标，这里跟随设置。 */
+  function renderGridCaption(view) {
+    const cap = $('grid-cap');
+    if (!cap) return;
+    const stdName = view && view.std === 'cn' ? '中国 HJ 633-2012' : '美国 US EPA';
+    cap.textContent = `分项污染物与 24 小时曲线 · ${stdName}`;
   }
 
   // ---------- 24 小时曲线（canvas，无外部依赖） ----------
@@ -2284,6 +2321,7 @@ body {
       title: '官方直连',
       nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['本部署的服务端代理', '代取·绕开CORS'], ['本页', '每5分钟轮询']],
       foot: '浓度与国标 AQI 均为官方原值，零换算。',
+      ttl: '官方每小时发布一次，发布值本身比真实时间旧约 20 到 60 分钟；本页每 5 分钟轮询，拿到的就是官方最新发布值，无额外延迟。',
       off: '本部署为纯静态托管，没有服务端代理',
     },
     {
@@ -2291,6 +2329,7 @@ body {
       title: '官方快照',
       nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['快照生产者（能直连官方的机器）', '每小时抓取'], ['GitHub Pages 静态快照', '同源读取'], ['本页', '每5分钟轮询']],
       foot: '快照含官方原始浓度、24h 均值与 O3-8h，国标为官方原值，零换算。',
+      ttl: '官方发布滞后 20 到 60 分钟，加上快照每小时生产一次、发布约 1 到 2 分钟；最坏比官方最新发布值再旧约 1 小时，下方会显示快照实际生成时间。',
       off: '当前快照不是由能直连官方的机器生产',
     },
     {
@@ -2298,6 +2337,7 @@ body {
       title: '转发快照（云端兜底）',
       nodes: [['国控站监测站', '实测'], ['cnemc 官方发布平台', '每小时更新'], ['WAQI 官方转发', '慢约1小时'], ['反算浓度→换算国标', '约1-2点误差'], ['GitHub Pages 静态快照', '同源读取'], ['本页', '每5分钟轮询']],
       foot: 'GitHub 云端出口到不了 cnemc，只能经 WAQI 转发；国标为换算值，页面已明确标注。',
+      ttl: 'WAQI 转发比官方发布再慢约 1 小时，叠加每小时一次的快照后，通常比真实时间旧 1 到 2 小时；定位是保活兜底，不是首选。',
       off: '快照已是官方原始值，无需兜底',
     },
     {
@@ -2305,6 +2345,7 @@ body {
       title: '模式兜底',
       nodes: [['CAMS 卫星+模式', '推算'], ['Open-Meteo', '免Key·CORS开放'], ['本页直连', '每5分钟轮询']],
       foot: '卫星+模式推算值，非国控站实测；任一官方通道恢复即自动切回。',
+      ttl: '卫星+模式分析场，小时级更新，通常比真实时间旧 1 到 3 小时，且不是实测值；只在官方通道全断时启用。',
       off: '官方通道可用，未启用',
     },
   ];
@@ -2337,13 +2378,37 @@ body {
         ? `<span class="pipe-badge on">当前生效</span><b>${p.title}</b>`
         : `<span class="pipe-badge">未启用</span><b>${p.title}</b><i class="pipe-reason">${p.off}</i>`;
       const footLine = on ? `<div class="pipe-path-foot">${p.foot}</div>` : '';
-      return `<div class="pipe-path${on ? ' on' : ' off'}"><div class="pipe-path-head">${head}</div><div class="pipe-row">${chain}</div>${footLine}</div>`;
+      const ttlLine = `<div class="pipe-ttl">时效：${p.ttl}</div>`;
+      return `<div class="pipe-path${on ? ' on' : ' off'}"><div class="pipe-path-head">${head}</div><div class="pipe-row">${chain}</div>${ttlLine}${footLine}</div>`;
     }).join('');
 
     if (note) note.textContent = active ? `当前生效：${active.title}` : '待取数';
     if (foot) {
-      const t = S.data && S.data.fetched_at ? new Date(S.data.fetched_at).toLocaleTimeString('zh-CN') : '';
-      foot.textContent = (active ? active.foot : '取到数据后，这里会标出实际走过的链路。') + (t ? ` 本页最近一次取数：${t}。` : '');
+      const d = S.data || {};
+      const bits = [];
+      if (d.observed_at && !Number.isNaN(Date.parse(d.observed_at))) {
+        bits.push(`观测值时间 ${fmtObs(d.observed_at)}（${agoText(Date.parse(d.observed_at))}）`);
+      }
+      if (d.snapshot_at && !Number.isNaN(Date.parse(d.snapshot_at))) {
+        bits.push(`快照生成 ${fmtObs(d.snapshot_at)}（${agoText(Date.parse(d.snapshot_at))}）`);
+      }
+      if (S.lastOkAt) bits.push(`本页取数 ${agoText(S.lastOkAt)}`);
+      if (S.settings.interval) bits.push(`每 ${Math.round(S.settings.interval / 60)} 分钟自动重取`);
+      foot.textContent = (active ? active.foot : '取到数据后，这里会标出实际走过的链路。') + (bits.length ? ` 当前：${bits.join('，')}。` : '');
+    }
+  }
+
+  /** 时间展示：无时区后缀的上游时间就是北京时间原样显示；带时区（Z）的快照时间换算到北京时间。 */
+  function fmtObs(v) {
+    if (!v) return '';
+    const s = String(v);
+    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) return s.replace('T', ' ').slice(5, 16);
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return '';
+    try {
+      return dt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/\//g, '-');
+    } catch {
+      return s.slice(5, 16).replace('T', ' ');
     }
   }
 
@@ -2675,7 +2740,8 @@ body {
       ['数据源', S.configured === true ? '<span class="ok">已配置</span>' : (S.configured === false ? '<span class="bad">未配置</span>' : '探测中')],
       ['常亮', wake],
       ['刷新间隔', `${S.settings.interval} 秒`],
-      ['口径', S.settings.std === 'cn' ? '国标（换算）' : '美标（原值）'],
+      ['大数字口径', '美标 US EPA（固定）'],
+      ['分项口径', S.settings.std === 'cn' ? '国标 HJ 633-2012' : '美标 US EPA'],
       ['位置', S.geo ? (S.geo.q ? `城市：${S.geo.q}` : `${S.geo.lat}, ${S.geo.lon}`) : '<span class="bad">无</span>'],
       ['上次成功', S.lastOkAt ? `<span class="ok">${new Date(S.lastOkAt).toLocaleTimeString('zh-CN')}</span>` : '<span class="bad">从未</span>'],
       ['连续失败', S.failStreak ? `<span class="bad">${S.failStreak} 次</span>` : '<span class="ok">0</span>'],
